@@ -3,11 +3,21 @@
 
 import cv2 as cv
 import numpy as np
+import time
 
 points = [[],[]]
 point_for_search = [[],[]]
 points_plan = [[],[]] #points for window "plan"
 plan = cv.imread("plan_test.jpg")
+
+classNames = { 0: 'background',
+    1: 'aeroplane', 2: 'bicycle', 3: 'bird', 4: 'boat',
+    5: 'bottle', 6: 'bus', 7: 'car', 8: 'cat', 9: 'chair',
+    10: 'cow', 11: 'diningtable', 12: 'dog', 13: 'horse',
+    14: 'motorbike', 15: 'person', 16: 'pottedplant',
+    17: 'sheep', 18: 'sofa', 19: 'train', 20: 'tvmonitor' }
+#Load the Caffe model 
+net = cv.dnn.readNetFromCaffe("MobileNetSSD_deploy.prototxt", "MobileNetSSD_deploy.caffemodel")
 
 # mouse callback function for window "cam1" and "cam2"
 def get_point(event,x,y,flags,param):
@@ -48,36 +58,102 @@ def find_and_draw_points(points, points_on_plan, point_for_search):
 
 
 cv.namedWindow( "cam1" )
-cv.namedWindow( "cam2" )
+# cv.namedWindow( "cam2" )
 cv.namedWindow( "plane", cv.WINDOW_NORMAL )
 cv.resizeWindow('plane', 300,300)
 cv.setMouseCallback('cam1',get_point, param = 0)
-cv.setMouseCallback('cam2',get_point, param = 1)
+# cv.setMouseCallback('cam2',get_point, param = 1)
 cv.setMouseCallback('plane',get_point_on_plan)
+# cap1 = cv.VideoCapture("car_chase_02.mp4")
 cap1 = cv.VideoCapture(1)
-cap2 = cv.VideoCapture(2)
+# cap2 = cv.VideoCapture(2)
 
 while True:
     flag, img = cap1.read()
     draw_points(img,points[0],point_for_search[0])
     cv.imshow('cam1', img)
 
-    flag2, img2 = cap2.read()
-    draw_points(img2,points[1],point_for_search[1])
-    cv.imshow('cam2', img2)
+    # flag2, img2 = cap2.read()
+    # draw_points(img2,points[1],point_for_search[1])
+    # cv.imshow('cam2', img2)
 
     cv.imshow('plane', plan)
 
+    ch = cv.waitKey(5)
+    if ch == 27:
+        break
+
+while True:
+    flag, img = cap1.read()
+    frame_resized = cv.resize(img,(300,300)) # resize frame for prediction
+
+    start = time.time()
+
+    blob = cv.dnn.blobFromImage(frame_resized, 0.007843, (300, 300), (127.5, 127.5, 127.5), False)
+    #Set to network the input blob 
+    net.setInput(blob)
+    #Prediction of network
+    detections = net.forward()
+
+    #Size of frame resize (300x300)
+    cols = frame_resized.shape[1] 
+    rows = frame_resized.shape[0]
+
+    #For get the class and location of object detected, 
+    # There is a fix index for class, location and confidence
+    # value in @detections array .
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2] #Confidence of prediction 
+        if confidence > 0.5: # Filter prediction 
+            class_id = int(detections[0, 0, i, 1]) # Class label
+
+            # Object location 
+            xLeftBottom = int(detections[0, 0, i, 3] * cols) 
+            yLeftBottom = int(detections[0, 0, i, 4] * rows)
+            xRightTop   = int(detections[0, 0, i, 5] * cols)
+            yRightTop   = int(detections[0, 0, i, 6] * rows)
+            
+            # Factor for scale to original size of frame
+            heightFactor = img.shape[0]/300.0  
+            widthFactor = img.shape[1]/300.0 
+            # Scale object detection to frame
+            xLeftBottom = int(widthFactor * xLeftBottom) 
+            yLeftBottom = int(heightFactor * yLeftBottom)
+            xRightTop   = int(widthFactor * xRightTop)
+            yRightTop   = int(heightFactor * yRightTop)
+
+            # Draw label and confidence of prediction in frame resized
+            if classNames[class_id] == 'person':
+                # Draw location of object  
+                cv.rectangle(img, (xLeftBottom, yLeftBottom), (xRightTop, yRightTop),
+                          (0, 255, 0))
+                point_for_search[0].append([xLeftBottom+(xRightTop-xLeftBottom)/2,yRightTop])
+                print("xRightTop: ", xRightTop, "xLeftBottom: ", xLeftBottom, "yRightTop", yRightTop, "yLeftBottom", yLeftBottom)
+                if class_id in classNames:
+                    label = classNames[class_id] + ": " + str(confidence)
+                    labelSize, baseLine = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+
+                    yLeftBottom = max(yLeftBottom, labelSize[1])
+                    cv.rectangle(img, (xLeftBottom, yLeftBottom - labelSize[1]),
+                                         (xLeftBottom + labelSize[0], yLeftBottom + baseLine),
+                                         (255, 255, 255), cv.FILLED)
+
+                    cv.putText(img, label, (xLeftBottom, yLeftBottom),
+                                cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
+                    print(label) #print class and confidence
+    end = time.time()
+    print("[INFO] SSD took {:.6f} seconds".format(end - start))
+
+    cv.imshow('cam1', img)
+
     if len(points[0]) == 4 and len(points_plan[0]) == 4 and len(point_for_search[0])>0:
         find_and_draw_points(points[0],points_plan[0],point_for_search[0])
-
-    if len(points[1]) == 4 and len(points_plan[1]) == 4 and len(point_for_search[1])>0:
-        find_and_draw_points(points[1],points_plan[1],point_for_search[1])
+    cv.imshow('plane', plan)
 
     ch = cv.waitKey(5)
     if ch == 27:
         break
 
 cap1.release()
-cap2.release()
+# cap2.release()
 cv.destroyAllWindows()
