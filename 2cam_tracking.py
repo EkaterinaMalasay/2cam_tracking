@@ -5,9 +5,11 @@ import cv2 as cv
 import numpy as np
 import time
 
-points = [[],[]]
+# points = [[],[]]
+points = [[[1,4],[958,4],[1,542],[958,542]],[]]
 point_for_search = [[],[]]
-points_plan = [[],[]] #points for window "plan"
+# points_plan = [[],[]] #points for window "plan"
+points_plan = [[[51,184],[758,184],[51,895],[758,895]],[]] #points for window "plan"
 plan = cv.imread("plan_test.jpg")
 
 classNames = { 0: 'background',
@@ -17,14 +19,14 @@ classNames = { 0: 'background',
     14: 'motorbike', 15: 'person', 16: 'pottedplant',
     17: 'sheep', 18: 'sofa', 19: 'train', 20: 'tvmonitor' }
 #Load the Caffe model 
-net = cv.dnn.readNetFromCaffe("MobileNetSSD_deploy.prototxt", "MobileNetSSD_deploy.caffemodel")
+net = cv.dnn.readNetFromCaffe("MobileNetSSD/MobileNetSSD_deploy.prototxt", "MobileNetSSD/MobileNetSSD_deploy.caffemodel")
 
 # mouse callback function for window "cam1" and "cam2"
 def get_point(event,x,y,flags,param):
     if event == cv.EVENT_LBUTTONDOWN and len(points[param])<4:
         points[param].append([x,y])
-    if event == cv.EVENT_LBUTTONDBLCLK:
-        point_for_search[param].append([x,y])
+    # if event == cv.EVENT_LBUTTONDBLCLK:
+    #     point_for_search[param].append([x,y])
 
 # mouse callback function for window "plane"
 def get_point_on_plan(event,x,y,flags,param):
@@ -56,37 +58,11 @@ def find_and_draw_points(points, points_on_plan, point_for_search):
     for i in range(len(point_for_search)):
         cv.circle(plan,(int(plan_point[i,0,0]), int(plan_point[i,0,1])),15,(0,0,0),-1)
 
+def add_point_for_search(x,y):
+    point_for_search[0].append([x,y])
 
-cv.namedWindow( "cam1" )
-# cv.namedWindow( "cam2" )
-cv.namedWindow( "plane", cv.WINDOW_NORMAL )
-cv.resizeWindow('plane', 300,300)
-cv.setMouseCallback('cam1',get_point, param = 0)
-# cv.setMouseCallback('cam2',get_point, param = 1)
-cv.setMouseCallback('plane',get_point_on_plan)
-# cap1 = cv.VideoCapture("car_chase_02.mp4")
-cap1 = cv.VideoCapture(1)
-# cap2 = cv.VideoCapture(2)
-
-while True:
-    flag, img = cap1.read()
-    draw_points(img,points[0],point_for_search[0])
-    cv.imshow('cam1', img)
-
-    # flag2, img2 = cap2.read()
-    # draw_points(img2,points[1],point_for_search[1])
-    # cv.imshow('cam2', img2)
-
-    cv.imshow('plane', plan)
-
-    ch = cv.waitKey(5)
-    if ch == 27:
-        break
-
-while True:
-    flag, img = cap1.read()
+def ssd_detection(img):
     frame_resized = cv.resize(img,(300,300)) # resize frame for prediction
-
     start = time.time()
 
     blob = cv.dnn.blobFromImage(frame_resized, 0.007843, (300, 300), (127.5, 127.5, 127.5), False)
@@ -127,7 +103,9 @@ while True:
                 # Draw location of object  
                 cv.rectangle(img, (xLeftBottom, yLeftBottom), (xRightTop, yRightTop),
                           (0, 255, 0))
-                point_for_search[0].append([xLeftBottom+(xRightTop-xLeftBottom)/2,yRightTop])
+
+                add_point_for_search(xLeftBottom+(xRightTop-xLeftBottom)/2,yRightTop)
+
                 print("xRightTop: ", xRightTop, "xLeftBottom: ", xLeftBottom, "yRightTop", yRightTop, "yLeftBottom", yLeftBottom)
                 if class_id in classNames:
                     label = classNames[class_id] + ": " + str(confidence)
@@ -141,9 +119,35 @@ while True:
                     cv.putText(img, label, (xLeftBottom, yLeftBottom),
                                 cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
                     print(label) #print class and confidence
+
     end = time.time()
     print("[INFO] SSD took {:.6f} seconds".format(end - start))
+    return img
 
+
+cv.namedWindow( "cam1" )
+cv.namedWindow( "plane", cv.WINDOW_NORMAL )
+cv.resizeWindow('plane', 300,300)
+cv.setMouseCallback('cam1',get_point, param = 0)
+cv.setMouseCallback('plane',get_point_on_plan)
+cap1 = cv.VideoCapture("test2.webm")
+# cap1 = cv.VideoCapture(1)
+
+#point selection
+# while True:
+#     flag, img = cap1.read()
+#     draw_points(img,points[0],point_for_search[0])
+#     cv.imshow('cam1', img)
+
+#     cv.imshow('plane', plan)
+
+#     ch = cv.waitKey(5)
+#     if ch == 27:
+#         break
+
+while True:
+    flag, img = cap1.read()
+    img = ssd_detection(img)
     cv.imshow('cam1', img)
 
     if len(points[0]) == 4 and len(points_plan[0]) == 4 and len(point_for_search[0])>0:
@@ -155,5 +159,4 @@ while True:
         break
 
 cap1.release()
-# cap2.release()
 cv.destroyAllWindows()
