@@ -4,12 +4,15 @@
 import cv2 as cv
 import numpy as np
 import time
+import tools
+from math import sqrt
 
 # points = [[],[]]
-points = [[[1,4],[958,4],[1,542],[958,542]],[]]
+points = [[[1,4],[520,4],[1,542],[520,542]],[[420,4],[958,4],[420,542],[958,542]]]
 point_for_search = [[],[]]
+point_for_draw = [[],[]]
 # points_plan = [[],[]] #points for window "plan"
-points_plan = [[[51,184],[758,184],[51,895],[758,895]],[]] #points for window "plan"
+points_plan = [[[51,184],[400,184],[51,895],[400,895]],[[353,184],[758,184],[353,895],[758,895]]] #points for window "plan"
 plan = cv.imread("plan_test.jpg")
 
 classNames = { 0: 'background',
@@ -20,6 +23,14 @@ classNames = { 0: 'background',
     17: 'sheep', 18: 'sofa', 19: 'train', 20: 'tvmonitor' }
 #Load the Caffe model 
 net = cv.dnn.readNetFromCaffe("MobileNetSSD/MobileNetSSD_deploy.prototxt", "MobileNetSSD/MobileNetSSD_deploy.caffemodel")
+
+
+def point_in_the_circle(center, radius, point):
+    h = sqrt((center[1]-point[1])**2 + (center[0]-point[0])**2)
+    if h > radius:
+        return False
+    else:
+        return True
 
 # mouse callback function for window "cam1" and "cam2"
 def get_point(event,x,y,flags,param):
@@ -56,12 +67,12 @@ def find_and_draw_points(points, points_on_plan, point_for_search):
     plan_point = cv.perspectiveTransform(cam_point, H)
 
     for i in range(len(point_for_search)):
-        cv.circle(plan,(int(plan_point[i,0,0]), int(plan_point[i,0,1])),15,(0,0,0),-1)
+        cv.circle(plan,(int(plan_point[i,0,0]), int(plan_point[i,0,1])),5,(0,0,0),-1)
 
-def add_point_for_search(x,y):
-    point_for_search[0].append([x,y])
+def add_point_for_search(cam,x,y):
+    point_for_search[cam].append([x,y])
 
-def ssd_detection(img):
+def ssd_detection(cam, img):
     frame_resized = cv.resize(img,(300,300)) # resize frame for prediction
     start = time.time()
 
@@ -80,7 +91,7 @@ def ssd_detection(img):
     # value in @detections array .
     for i in range(detections.shape[2]):
         confidence = detections[0, 0, i, 2] #Confidence of prediction 
-        if confidence > 0.5: # Filter prediction 
+        if confidence > 0.3: # Filter prediction 
             class_id = int(detections[0, 0, i, 1]) # Class label
 
             # Object location 
@@ -104,7 +115,7 @@ def ssd_detection(img):
                 cv.rectangle(img, (xLeftBottom, yLeftBottom), (xRightTop, yRightTop),
                           (0, 255, 0))
 
-                add_point_for_search(xLeftBottom+(xRightTop-xLeftBottom)/2,yRightTop)
+                add_point_for_search(cam,xLeftBottom+(xRightTop-xLeftBottom)/2,yRightTop)
 
                 print("xRightTop: ", xRightTop, "xLeftBottom: ", xLeftBottom, "yRightTop", yRightTop, "yLeftBottom", yLeftBottom)
                 if class_id in classNames:
@@ -126,11 +137,14 @@ def ssd_detection(img):
 
 
 cv.namedWindow( "cam1" )
+cv.namedWindow( "cam2" )
 cv.namedWindow( "plane", cv.WINDOW_NORMAL )
 cv.resizeWindow('plane', 300,300)
 cv.setMouseCallback('cam1',get_point, param = 0)
+cv.setMouseCallback('cam2',get_point, param = 1)
 cv.setMouseCallback('plane',get_point_on_plan)
 cap1 = cv.VideoCapture("test2.webm")
+cap2 = cv.VideoCapture("test3.webm")
 # cap1 = cv.VideoCapture(1)
 
 #point selection
@@ -147,11 +161,32 @@ cap1 = cv.VideoCapture("test2.webm")
 
 while True:
     flag, img = cap1.read()
-    img = ssd_detection(img)
+    img = ssd_detection(0,img)
     cv.imshow('cam1', img)
 
-    if len(points[0]) == 4 and len(points_plan[0]) == 4 and len(point_for_search[0])>0:
-        find_and_draw_points(points[0],points_plan[0],point_for_search[0])
+    flag, img2 = cap2.read()
+    img2 = ssd_detection(1,img2)
+    cv.imshow('cam2', img2)
+
+    i = 0
+    k = 0
+    while i < len(point_for_search[0]):
+        while k < len(point_for_search[1]):
+            if point_in_the_circle( point_for_search[0][i], 10, point_for_search[1][k]):
+                point_for_search[1].pop(k)
+            k += 1
+        k = 0
+        i += 1
+
+    for i in range(len(point_for_search)):
+        for k in range(len(point_for_search[i])):
+            point_for_draw[i].append(point_for_search[i][k])
+    point_for_search = [[],[]]
+
+    if len(points[0]) == 4 and len(points_plan[0]) == 4 and len(point_for_draw[0])>0:
+        find_and_draw_points(points[0],points_plan[0],point_for_draw[0])
+    if len(points[1]) == 4 and len(points_plan[1]) == 4 and len(point_for_draw[1])>0:
+        find_and_draw_points(points[1],points_plan[1],point_for_draw[1])
     cv.imshow('plane', plan)
 
     ch = cv.waitKey(5)
@@ -159,4 +194,5 @@ while True:
         break
 
 cap1.release()
+cap2.release()
 cv.destroyAllWindows()
