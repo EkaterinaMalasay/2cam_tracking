@@ -9,11 +9,11 @@ from math import sqrt
 from ssd import SSD
 
 # points = [[],[]]
-points = [[[1,4],[520,4],[1,542],[520,542]],[[420,4],[958,4],[420,542],[958,542]]]
+points = [[[1,4],[450,4],[1,542],[450,542]],[[451,4],[958,4],[451,542],[958,542]]]
 point_for_search = [[],[]]
 point_for_draw = [[],[]]
 # points_plan = [[],[]] #points for window "plan"
-points_plan = [[[51,184],[400,184],[51,895],[400,895]],[[353,184],[758,184],[353,895],[758,895]]] #points for window "plan"
+points_plan = [[[51,184],[333,184],[51,895],[333,895]],[[334,184],[758,184],[334,895],[758,895]]] #points for window "plan"
 plan = cv.imread("plan_test.jpg")
 
 
@@ -83,6 +83,9 @@ cap2 = cv.VideoCapture("test3.webm")
 # while True:
 #     flag, img = cap1.read()
 #     draw_points(img,points[0],point_for_search[0])
+#     cv.imshow('cam1', img)
+#     flag2, img2 = cap2.read()
+#     draw_points(img,points[1],point_for_search[1])
 #     cv.imshow('cam1', img)
 
 #     cv.imshow('plane', plan)
