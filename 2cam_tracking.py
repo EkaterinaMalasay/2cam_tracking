@@ -6,6 +6,7 @@ import numpy as np
 import time
 import sys
 import os
+import re
 from PIL import Image
 from math import sqrt
 from ssd import SSD
@@ -17,10 +18,13 @@ from deep_sort.tracker import Tracker
 from tools import generate_detections as gdet
 from deep_sort.detection import Detection as ddet
 
-cam_points = [[],[]]
+# cam_points = [[],[]]
+cam_points = [[[109, 338], [536, 339], [4, 478], [637, 473]], [[109, 338], [536, 339], [4, 478], [637, 473]]]
 point_for_search = [[],[]]
 point_for_draw = [[],[]]
-plan_points = [[],[]]
+# plan_points = [[],[]]
+# plan_points = [[[163,554],[401,554],[163,755],[401,755]],[[262,40],[488,40],[262,258],[488,258]]] #points for window "plan"
+plan_points = [[[163,554],[401,554],[163,755],[401,755]],[[163,554],[401,554],[163,755],[401,755]]] #points for window "plan"
 plan = cv.imread("plan_test2.jpg")
 cam1 = 0
 cam2 = 1
@@ -40,28 +44,28 @@ encoder[cam2] = gdet.create_box_encoder(model_filename,batch_size=1)
 metric[cam2] = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
 tracker[cam2] = Tracker(metric[cam2])
 
-# mouse callback function for window "cam1" and "cam2"
-def get_point(event,x,y,flags,param):
-    if event == cv.EVENT_LBUTTONDOWN and len(cam_points[param])<4:
-        cam_points[param].append([x,y])
-    # if event == cv.EVENT_LBUTTONDBLCLK:
-    #     point_for_search[param].append([x,y])
+# # mouse callback function for window "cam1" and "cam2"
+# def get_point(event,x,y,flags,param):
+#     if event == cv.EVENT_LBUTTONDOWN and len(cam_points[param])<4:
+#         cam_points[param].append([x,y])
+#     # if event == cv.EVENT_LBUTTONDBLCLK:
+#     #     point_for_search[param].append([x,y])
 
-# mouse callback function for window "plane"
-def get_point_on_plan(event,x,y,flags,param):
-    if event == cv.EVENT_LBUTTONDOWN:
-        plan_points[0].append([x,y])
-        cv.circle(plan,(x,y),15,(255,0,255),-1)
-    if event == cv.EVENT_RBUTTONDOWN:
-        plan_points[1].append([x,y])
-        cv.circle(plan,(x,y),15,(0,255,255),-1)
+# # mouse callback function for window "plane"
+# def get_point_on_plan(event,x,y,flags,param):
+#     if event == cv.EVENT_LBUTTONDOWN:
+#         plan_points[0].append([x,y])
+#         cv.circle(plan,(x,y),15,(255,0,255),-1)
+#     if event == cv.EVENT_RBUTTONDOWN:
+#         plan_points[1].append([x,y])
+#         cv.circle(plan,(x,y),15,(0,255,255),-1)
 
-#draw points on cam image
-def draw_points(img, points, point_for_search):
-    for x,y in points:
-        cv.circle(img,(x,y),5,(0,0,255),-1)
-    for x,y in point_for_search:
-        cv.circle(img,(x,y),5,(0,0,0),-1)
+# #draw points on cam image
+# def draw_points(img, points, point_for_search):
+#     for x,y in points:
+#         cv.circle(img,(x,y),5,(0,0,255),-1)
+#     for x,y in point_for_search:
+#         cv.circle(img,(x,y),5,(0,0,0),-1)
 
 def get_points_and_id(cam, frame, boxs):
     return_points = []
@@ -110,17 +114,27 @@ def remove_duplicate_points(temp_points_plan):
         while k < len(temp_points_plan[1]):
             center_circle = [temp_points_plan[0][i][0], temp_points_plan[0][i][1]]
             point = [temp_points_plan[1][k][0], temp_points_plan[1][k][1]]
-            if point_in_the_circle( center_circle, 5, point):
-                cam1_id = [ id for x,y,id in point_for_draw[0] if id == temp_points_plan[0][i][2]]
-                cam2_id = [ id for x,y,id in point_for_draw[1] if id == temp_points_plan[1][k][2]]
+            if point_in_the_circle( center_circle, 10, point):
+                cam1_id = [ id for x,y,id in point_for_draw[0] if re.findall(r"[\w']+", id)[0] == temp_points_plan[0][i][2]]
+                cam2_id = [ id for x,y,id in point_for_draw[1] if re.findall(r"[\w']+", id)[0] == temp_points_plan[1][k][2]]
                 if len(cam1_id) == 0:
                     temp_points_plan[0][i][2] = temp_points_plan[0][i][2] + "<-" + temp_points_plan[1][k][2]
                     temp_points_plan[1].pop(k)
                     k -= 1
-                else:
+                    break
+                elif len(cam1_id) == 1:
+                    temp_points_plan[1].pop(k)
+                    k -= 1
+                    break
+                elif len(cam2_id) == 0:
                     temp_points_plan[1][k][2] = temp_points_plan[0][i][2] + "->" + temp_points_plan[1][k][2]
                     temp_points_plan[0].pop(i)
                     i -= 1
+                    break
+                elif len(cam2_id) == 1:
+                    temp_points_plan[0].pop(k)
+                    k -= 1
+                    break
             k += 1
         k = 0
         i += 1
@@ -153,11 +167,14 @@ def draw_points_on_plan(temp_points_plan, img):
             y = temp_points_plan[i][k][1]
             id = temp_points_plan[i][k][2]
             cv.circle(img,(x, y),5,(0,0,0),-1)
-            cv.putText(img, id,(x, y),0, 5e-3 * 200, (255,0,0),2)
+            labelSize, baseLine = cv.getTextSize(id, cv.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            yLeftBottom = max(y, labelSize[1])
+            cv.rectangle(img, (x, y - labelSize[1]),
+                          (x + labelSize[0], y + baseLine),
+                          (255, 255, 255), cv.FILLED)
+            cv.putText(img, id, (x, y),cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
+            # cv.putText(img, id,(x, y),0, 5e-3 * 200, (255,0,0),2)
             point_for_draw[i].append([x,y,id])
-    # for i in range(len(point_for_draw[cam])):
-    #     cv.circle(img,(point_for_draw[cam][i][0], point_for_draw[cam][i][1]),5,(0,0,0),-1)
-
 
 
 ssd = SSD()
@@ -168,29 +185,29 @@ cv.resizeWindow('plane', 300,300)
 # cv.setMouseCallback('cam1',get_point, param = cam1)
 # cv.setMouseCallback('cam2',get_point, param = cam2)
 # cv.setMouseCallback('plane',get_point_on_plan)
-cap1 = cv.VideoCapture(1)
-cap2 = cv.VideoCapture(2)
+cap1 = cv.VideoCapture("test2.webm")
+cap2 = cv.VideoCapture("test3.webm")
 
-# point selection
-while True:
-    flag, img = cap1.read()
-    draw_points(img,cam_points[0],point_for_search[0])
-    cv.imshow('cam1', img)
+#point selection
+# while True:
+#     flag, img = cap1.read()
+#     draw_points(img,cam_points[0],point_for_search[0])
+#     cv.imshow('cam1', img)
 
-    flag2, img2 = cap2.read()
-    draw_points(img2,cam_points[1],point_for_search[1])
-    cv.imshow('cam2', img2)
+#     flag2, img2 = cap2.read()
+#     draw_points(img2,cam_points[1],point_for_search[1])
+#     cv.imshow('cam2', img2)
 
-    cv.imshow('plane', plan)
+#     cv.imshow('plane', plan)
 
-    ch = cv.waitKey(5)
-    if ch == 27:
-        break
+#     ch = cv.waitKey(5)
+#     if ch == 27:
+#         break
 
-print("point cam1: ", cam_points[0])
-print("point cam2: ", cam_points[1])
-print("point plan1: ", plan_points[0])
-print("point plan2: ", plan_points[1])
+# print("point cam1: ", cam_points[0])
+# print("point cam2: ", cam_points[1])
+# print("point plan1: ", plan_points[0])
+# print("point plan2: ", plan_points[1])
 
 while True:
     flag, img = cap1.read()
@@ -221,6 +238,7 @@ while True:
     draw_points_on_plan(temp_points_plan,plan)
     cv.imshow('plane', plan)
     point_for_search = [[],[]]
+
 
     # Press ESC to stop
     ch = cv.waitKey(5)
